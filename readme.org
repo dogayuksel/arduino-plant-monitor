@@ -1,0 +1,11 @@
+* Introduction
+  An arduino based soil moisture tracker.
+* Components 
+  - Two humidity sensors
+  - Arduino UNO
+  - Arduino WiFi shield
+  - Nodejs server
+  - Firebase Database
+  - Simple Dashboard based on d3.js
+* Demo
+  [[https://plant-monitor-144f5.herokuapp.com/][dashboard on heroku/firebase]]
