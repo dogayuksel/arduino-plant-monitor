@@ -19,14 +19,14 @@ const port = process.env.PORT || 3000;
 
 app.post('/push', (req, res) => {
   const data = req.body;
-  const ciphertext = data.slice(0, 16);
-  const tag = data.slice(16, 32);
-  const iv = data.slice(32, 44);
-  const decipher = crypto.createDecipheriv('aes-128-gcm', key, iv);
-  decipher.setAuthTag(tag);
+  const ciphertextFromArduino = data.slice(0, 16);
+  const signatureFromArduino = data.slice(16, 32);
+  const ivFromArduino = data.slice(32, 44); // Randoms sent on last response
+  const decipher = crypto.createDecipheriv('aes-128-gcm', key, ivFromArduino);
+  decipher.setAuthTag(signatureFromArduino);
   decipher.setAutoPadding(false);
-  let decrypted = decipher.update(ciphertext);
-  let plaintext = Buffer.concat([decrypted, decipher.final()]);
+  let partialPlaintext = decipher.update(ciphertextFromArduino);
+  let plaintext = Buffer.concat([partialPlaintext, decipher.final()]);
   const db = admin.database();
   const timeStamp = new Date().toJSON();
   const refSensor1 = db.ref("sensor1");
@@ -39,7 +39,19 @@ app.post('/push', (req, res) => {
     date: timeStamp,
     value: plaintext.readUInt16BE(2),
   });
-  res.send('Values Pushed');
+  const randomsForArduino = Buffer.alloc(12);
+  crypto.randomFillSync(randomsForArduino);
+  const ivForResponse = Buffer.alloc(12);
+  crypto.randomFillSync(ivForResponse);
+  const cipher = crypto.createCipheriv('aes-128-gcm', key, ivForResponse);
+  cipher.setAAD(randomsForArduino);
+  cipher.final();
+  const signatureOfResponse = cipher.getAuthTag();
+  res.send(Buffer.concat([
+    randomsForArduino, // 12 bytes
+    signatureOfResponse, // 16 bytes
+    ivForResponse, // 12 bytes
+  ]));
 });
 
 app.get('/data', (req, res) => {

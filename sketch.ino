@@ -2,14 +2,11 @@
 #include <WiFi.h>
 #include <AES.h>
 #include <GCM.h>
-#include <RNG.h>
-#include <TransistorNoiseSource.h>
 
 char ssid[] = "Network_SSID";      //  your network SSID (name)
 char pass[] = "Network_Password";   // your network password
 
 GCM<AES128> gcm;
-TransistorNoiseSource noise(A3);
 
 byte key[32] = {
   0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
@@ -22,7 +19,6 @@ int sensorPin2 = A1;
 int sensorValue2 = 0;
 
 int status = WL_IDLE_STATUS;
-byte mac[6]; // the MAC address of your Wifi shield
 
 // Initialize the Wifi client library
 WiFiClient client;
@@ -32,6 +28,17 @@ char server[] = "192.168.2.115"; // your server address
 
 unsigned long lastConnectionTime = 0; // last time you connected to the server, in milliseconds
 const unsigned long postingInterval = 30L * 60L * 1000L; // delay between updates, in milliseconds
+
+int parseIndex = 0;
+byte serverRandoms[12];
+byte serverSignature[16];
+byte serverIV[12];
+byte iv[12] = {
+  0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+  0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB
+};
+
+int temperCount = 0;
 
 void setup() {
   //Initialize serial and wait for port to open:
@@ -66,29 +73,63 @@ void setup() {
   printWifiStatus();
   
   gcm.setKey(key, 16);
-
-  WiFi.macAddress(mac);
-  RNG.begin("Arduino Plant Monitor 1.0");
-  RNG.stir(mac, 6);
-  RNG.addNoiseSource(noise);
 }
 
 void loop() {
-  // if there's incoming data from the net connection.
-  // send it out the serial port.  This is for debugging
-  // purposes only:
   while (client.available()) {
-    char c = client.read();
+    byte c = client.read();
     Serial.write(c);
+    if (parseIndex == 0) {
+      if (c == 0x0D) { parseIndex = 1; }
+    } else if (parseIndex == 1) {
+      if (c == 0x0A) { parseIndex = 2; }
+      else { parseIndex = 0; } 
+    } else if (parseIndex == 2) {
+      if (c == 0x0D) { parseIndex = 3; }
+      else { parseIndex = 0; } 
+    } else if (parseIndex == 3) {
+      if (c == 0x0A) { parseIndex = 4; }
+      else { parseIndex = 0; } 
+    } else if (parseIndex >= 4) {
+      // Store byte
+      if (parseIndex < (4 + 12)) {
+        serverRandoms[parseIndex - 4] = c;
+        parseIndex += 1;
+      } else if (parseIndex < (4 + 12 + 16)) {
+        serverSignature[parseIndex - 4 - 12] = c;
+        parseIndex += 1;
+      } else if (parseIndex < (4 + 12 + 16 + 12 - 1 )) {
+        serverIV[parseIndex - 4 - 12 - 16] = c;
+        parseIndex += 1;
+      } else {
+        // Last byte
+        serverIV[parseIndex - 4 - 12 - 16] = c;
+        parseIndex = 0;
+        gcm.setIV(serverIV, 12);
+        gcm.addAuthData(serverRandoms, 12);
+        if (gcm.checkTag(serverSignature, 16)) {
+          Serial.println("\nValid signature!!!");
+          temperCount = 0;
+          for (int i = 0; i < 12; i++) {
+            iv[i] = serverRandoms[i];
+          }
+        } else {
+          Serial.println("\nRandoms have been tempered!");
+          // Postpone next connection
+          temperCount += 1;
+          lastConnectionTime += temperCount * postingInterval;
+        }
+      }
+    }
   }
 
-  if (!RNG.available(12 * 2)) {
-    RNG.loop();
+  if (lastConnectionTime > (20L * 24L * 60L * 60L * 1000L) && 
+      millis() < (lastConnectionTime - (20L * 24L * 60L * 60L * 1000L))) {
+    // reset on overflow (20 days of difference)
+    lastConnectionTime = 0;
   }
 
-  // if ten seconds have passed since your last connection,
-  // then connect again and send data:
-  if (millis() - lastConnectionTime > postingInterval) {
+  if (millis() > lastConnectionTime && millis() - lastConnectionTime > postingInterval) {
     httpRequest();
   }
 }
@@ -120,12 +161,7 @@ void httpRequest() {
     plaintext[3] = low2;
 
     byte ciphertext[16];
-    byte iv[12] = {
-      0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
-      0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB
-    };
 
-    RNG.rand(iv, 12);
     gcm.setIV(iv, 12);
     gcm.encrypt(ciphertext, plaintext, 16);
     byte tag[16];
@@ -143,15 +179,12 @@ void httpRequest() {
     client.println(44);
     client.println();    
     for (int i = 0; i < 16; i++) {
-      Serial.println(char(ciphertext[i]));
       client.write(ciphertext[i]);
     }
     for (int i = 0; i < 16; i++) {
-      Serial.println(char(tag[i]));
       client.write(tag[i]);
     }
     for (int i = 0; i < 12; i++) {
-      Serial.println(char(iv[i]));
       client.write(iv[i]);
     }
     client.println();
