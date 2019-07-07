@@ -58,16 +58,26 @@ app.get('/data', (req, res) => {
   const data = {};
   const db = admin.database();
   const refSensor1 = db.ref('sensor1');
-  refSensor1.once('value').then((snapshot) => {
-    data['sensor1'] = snapshot.val();
-    refSensor2 = db.ref('sensor2');
-    return refSensor2.once('value'); 
-  }).then((snapshot) => {
-    data['sensor2'] = snapshot.val();
-    return res.json(data);
-  }).catch((error) => {
-    console.log('The read failed: ' + error.code);
-  });
+  const currentTimestamp = Date.now();
+  const startTimestamp = currentTimestamp - 14 * 24 * 60 * 60 * 1000;
+  const startDate = new Date(startTimestamp).toJSON();
+  refSensor1
+    .orderByChild('date')
+    .startAt(startDate)
+    .once('value')
+    .then((snapshot) => {
+      data['sensor1'] = snapshot.val();
+      refSensor2 = db.ref('sensor2');
+      return refSensor2
+        .orderByChild('date')
+        .startAt(startDate)
+        .once('value'); 
+    }).then((snapshot) => {
+      data['sensor2'] = snapshot.val();
+      return res.json(data);
+    }).catch((error) => {
+      console.log('The read failed: ' + error.code);
+    });
 });
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));
