@@ -28,16 +28,26 @@ app.post('/push', (req, res) => {
   let partialPlaintext = decipher.update(ciphertextFromArduino);
   let plaintext = Buffer.concat([partialPlaintext, decipher.final()]);
   const db = admin.database();
-  const timeStamp = new Date().toJSON();
+  const timestamp = new Date().toJSON();
   const refSensor1 = db.ref("sensor1");
   refSensor1.push().set({
-    date: timeStamp,
+    date: timestamp,
     value: plaintext.readUInt16BE(0),
   });
   const refSensor2 = db.ref("sensor2");
   refSensor2.push().set({
-    date: timeStamp,
+    date: timestamp,
     value: plaintext.readUInt16BE(2),
+  });
+  const refTemp = db.ref("temperature");
+  refTemp.push().set({
+    date: timestamp,
+    value: plaintext.readUInt16BE(4),
+  });
+  const refLight = db.ref("light");
+  refLight.push().set({
+    date: timestamp,
+    value: plaintext.readUInt16BE(6),
   });
   const randomsForArduino = Buffer.alloc(12);
   crypto.randomFillSync(randomsForArduino);
@@ -58,16 +68,32 @@ app.get('/data', (req, res) => {
   const data = {};
   const db = admin.database();
   const refSensor1 = db.ref('sensor1');
-  refSensor1.once('value').then((snapshot) => {
-    data['sensor1'] = snapshot.val();
-    refSensor2 = db.ref('sensor2');
-    return refSensor2.once('value'); 
-  }).then((snapshot) => {
-    data['sensor2'] = snapshot.val();
-    return res.json(data);
-  }).catch((error) => {
-    console.log('The read failed: ' + error.code);
-  });
+  const currentTimestamp = Date.now();
+  const startTimestamp = currentTimestamp - 14 * 24 * 60 * 60 * 1000;
+  const startDate = new Date(startTimestamp).toJSON();
+  refSensor1
+    .orderByChild('date')
+    .startAt(startDate)
+    .once('value')
+    .then((snapshot) => {
+      data['sensor1'] = snapshot.val();
+      refSensor2 = db.ref('sensor2');
+      return refSensor2
+        .orderByChild('date')
+        .startAt(startDate)
+        .once('value'); 
+    }).then((snapshot) => {
+      data['sensor2'] = snapshot.val();
+      return db.ref('temperature').once('value');
+    }).then((snapshot) => {
+      data['temperature'] = snapshot.val();
+      return db.ref('light').once('value');
+    }).then((snapshot) => {
+      data['light'] = snapshot.val();
+      return res.json(data);
+    }).catch((error) => {
+      console.log('The read failed: ' + error.code);
+    });
 });
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));

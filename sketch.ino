@@ -3,6 +3,18 @@
 #include <AES.h>
 #include <GCM.h>
 
+#include <DallasTemperature.h>
+#include <OneWire.h>
+
+// Data wire is plugged into port 2 on the Arduino
+#define ONE_WIRE_BUS 2
+
+// Setup a oneWire instance to communicate with any OneWire devices
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire);
+
 char ssid[] = "Network_SSID";      //  your network SSID (name)
 char pass[] = "Network_Password";   // your network password
 
@@ -17,6 +29,12 @@ int sensorPin1 = A0;
 int sensorValue1 = 0;
 int sensorPin2 = A1;
 int sensorValue2 = 0;
+
+float temperature = 0.0;
+int temperatureValue = 0;
+
+int lightPin = A2;
+int lightValue = 0;
 
 int status = WL_IDLE_STATUS;
 
@@ -49,19 +67,19 @@ void setup() {
 
   // check for the presence of the shield:
   if (WiFi.status() == WL_NO_SHIELD) {
-    Serial.println("WiFi shield not present");
+    Serial.println(F("WiFi shield not present"));
     // don't continue:
     while (true);
   }
 
   String fv = WiFi.firmwareVersion();
   if (fv != "1.1.0") {
-    Serial.println("Please upgrade the firmware");
+    Serial.println(F("Please upgrade the firmware"));
   }
 
   // attempt to connect to Wifi network:
   while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
+    Serial.print(F("Attempting to connect to SSID: "));
     Serial.println(ssid);
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
     status = WiFi.begin(ssid, pass);
@@ -73,6 +91,8 @@ void setup() {
   printWifiStatus();
   
   gcm.setKey(key, 16);
+
+  sensors.begin();
 }
 
 void loop() {
@@ -108,13 +128,13 @@ void loop() {
         gcm.setIV(serverIV, 12);
         gcm.addAuthData(serverRandoms, 12);
         if (gcm.checkTag(serverSignature, 16)) {
-          Serial.println("\nValid signature!!!");
+          Serial.println(F("\nValid signature!!!"));
           temperCount = 0;
           for (int i = 0; i < 12; i++) {
             iv[i] = serverRandoms[i];
           }
         } else {
-          Serial.println("\nRandoms have been tempered!");
+          Serial.println(F("\nRandoms have been tempered!"));
           // Postpone next connection
           temperCount += 1;
           lastConnectionTime += temperCount * postingInterval;
@@ -149,6 +169,20 @@ void httpRequest() {
     };
     sensorValue1 = analogRead(sensorPin1);
     sensorValue2 = analogRead(sensorPin2);
+
+    sensors.requestTemperatures(); // Send the command to get temperatures
+    temperature = sensors.getTempCByIndex(0);
+
+    // Check if reading was successful
+    if(temperature != DEVICE_DISCONNECTED_C) {
+      temperatureValue = round(temperature * 10);
+    } 
+    else {
+      temperatureValue = 0;
+    }
+
+    // max voltage 0.55V
+    lightValue = map(analogRead(lightPin), 0, 113, 0, 1024);
     
     byte low1 = sensorValue1;
     byte high1 = sensorValue1 >> 8;
@@ -160,6 +194,16 @@ void httpRequest() {
     plaintext[2] = high2;
     plaintext[3] = low2;
 
+    byte low3 = temperatureValue;
+    byte high3 = temperatureValue >> 8;
+    plaintext[4] = high3;
+    plaintext[5] = low3;
+
+    byte low4 = lightValue;
+    byte high4 = lightValue >> 8;
+    plaintext[6] = high4;
+    plaintext[7] = low4;
+
     byte ciphertext[16];
 
     gcm.setIV(iv, 12);
@@ -167,15 +211,15 @@ void httpRequest() {
     byte tag[16];
     gcm.computeTag(tag, 16);
 
-    Serial.println("\nconnecting...");
+    Serial.println(F("\nconnecting..."));
     // send the HTTP PUT request:
-    client.println("POST /push HTTP/1.1");
-    client.print("HOST: ");
+    client.println(F("POST /push HTTP/1.1"));
+    client.print(F("HOST: "));
     client.println(server);
-    client.println("User-Agent: ArduinoWiFi/1.1");
-    client.println("Connection: close");
-    client.println("Content-Type: application/octet-stream");
-    client.print("Content-Length: ");
+    client.println(F("User-Agent: ArduinoWiFi/1.1"));
+    client.println(F("Connection: close"));
+    client.println(F("Content-Type: application/octet-stream"));
+    client.print(F("Content-Length: "));
     client.println(44);
     client.println();    
     for (int i = 0; i < 16; i++) {
@@ -194,23 +238,23 @@ void httpRequest() {
     lastConnectionTime = millis();
   } else {
     // if you couldn't make a connection:
-    Serial.println("connection failed");
+    Serial.println(F("connection failed"));
   }
 }
 
 void printWifiStatus() {
   // print the SSID of the network you're attached to:
-  Serial.print("SSID: ");
+  Serial.print(F("SSID: "));
   Serial.println(WiFi.SSID());
 
   // print your WiFi shield's IP address:
   IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
+  Serial.print(F("IP Address: "));
   Serial.println(ip);
 
   // print the received signal strength:
   long rssi = WiFi.RSSI();
-  Serial.print("signal strength (RSSI):");
+  Serial.print(F("signal strength (RSSI):"));
   Serial.print(rssi);
-  Serial.println(" dBm");
+  Serial.println(F(" dBm"));
 }
