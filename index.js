@@ -84,10 +84,16 @@ app.get('/data', (req, res) => {
         .once('value'); 
     }).then((snapshot) => {
       data['sensor2'] = snapshot.val();
-      return db.ref('temperature').once('value');
+      return db.ref('temperature')
+        .orderByChild('date')
+        .startAt(startDate)
+        .once('value');
     }).then((snapshot) => {
       data['temperature'] = snapshot.val();
-      return db.ref('light').once('value');
+      return db.ref('light')
+        .orderByChild('date')
+        .startAt(startDate)
+        .once('value');
     }).then((snapshot) => {
       data['light'] = snapshot.val();
       return res.json(data);
