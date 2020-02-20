@@ -1,89 +1,143 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <style>
+     * {
+       font-family: sans-serif;
+     }
+     h1 {
+       font-weight: 400;
+     }
+     body {
+       margin: 40px 20px 220px 20px;
+     }
+    </style>
     <script src='https://d3js.org/d3.v5.min.js'></script>
   </head>
   <body>
-    <h1>Soil Moisture</h1>
     <h2>Last 2 Weeks</h2>
-    <script>
-     const margin = { top: 20, bottom: 20, left: 40, right: 40 };
-     const width = 800;
-     const height = 600;
-
-     const findFirstDay = (data) => d3.min(data, d => new Date(d.date));
-     const findLastDay = (data) => d3.max(data, d => new Date(d.date));
-
-     const createXScale = (data, { margin, width }) => {
-       const firstDay = findFirstDay(data);
-       const lastDay = findLastDay(data);
-       return d3
-         .scaleTime()
-         .domain([firstDay, lastDay])
-         .range([margin.left, width - margin.right]);
-     };
-     const createXAxis = (xScale) => d3.axisBottom(xScale);
-
-     const createYScale = ({ height, margin }) => {
-       return d3
-         .scaleLinear()
-         .domain([1024, 0])
-         .range([height - margin.bottom, margin.top]);
-     };
-     const createYAxis = (yScale) => d3.axisLeft(yScale);
-
-     const data = fetch('http://localhost:3000/data')
-       .then(v => v.json())
-       .then(data => {
-         console.log(data);
-         const xScale = createXScale(
-           Object.values(data.sensor1),
-           { margin, width },
-         );
-         const xAxis = createXAxis(xScale);
-
-         const yScale = createYScale({ height, margin })
-         const yAxis = createYAxis(yScale);
-
-         const svgNode = d3
-           .select('body')
-           .append('svg')
-           .attr('height', height)
-           .attr('width', width)
-           .style('padding', '20px');
-
-         svgNode
-           .append('g')
-           .attr(
-             'transform',
-             `translate(0, ${height - margin.bottom})`)
-           .call(xAxis);
-
-         svgNode
-           .append('g')
-           .attr('transform', `translate(${margin.left}, 0)`)
-           .call(yAxis);
-
-         const line = d3
-           .line()
-           .x(function(d) { return xScale(new Date(d.date)); })
-           .y(function(d) { return yScale(d.value); });
-
-         svgNode.append("path")
-                .datum(Object.values(data.sensor1))
-                .attr("fill", "none")
-                .attr("stroke", "steelblue")
-                .attr("stroke-width", 1.5)
-                .attr("d",line);
-
-         svgNode.append("path")
-                .datum(Object.values(data.sensor2))
-                .attr("fill", "none")
-                .attr("stroke", "crimson")
-                .attr("stroke-width", 1.5)
-                .attr("d",line);
-
-       });
-    </script>
+    <h1>Soil Moisture / Temperature</h1>
   </body>
+  <script>
+   const margin = { top: 20, bottom: 20, left: 40, right: 40 };
+   const screenWidth = window.innerWidth ;
+   const width = screenWidth > 1100 ? (screenWidth - 200) / 2 : screenWidth - 120;
+   const height = width * 0.62;
+
+   const findFirstDay = (data) => d3.min(data, d => new Date(d.date));
+   const findLastDay = (data) => d3.max(data, d => new Date(d.date));
+
+   const createXScale = (data, { margin, width }) => {
+     const firstDay = findFirstDay(data);
+     const lastDay = findLastDay(data);
+     return d3
+       .scaleTime()
+       .domain([firstDay, lastDay])
+       .range([margin.left, width - margin.right]);
+   };
+   const createXAxis = (xScale) => d3.axisBottom(xScale);
+
+   const createHumidityYScale = ({ height, margin }) => {
+     return d3
+       .scaleLinear()
+       .domain([1024, 0])
+       .range([height - margin.bottom, margin.top]);
+   };
+   const createHumidityYAxis = (yScale) => d3.axisLeft(yScale);
+
+   const createTemperatureYScale = ({ height, margin }) => {
+     return d3
+       .scaleLinear()
+       .domain([0, 400])
+       .range([height - margin.bottom, margin.top]);
+   };
+   const createTemperatureYAxis = (yScale) => d3.axisLeft(yScale);
+
+   const data = fetch('http://localhost:3000/data')
+     .then(v => v.json())
+     .then(data => {
+       const xScale = createXScale(
+         Object.values(data.sensor1),
+         { margin, width },
+       );
+       const xAxis = createXAxis(xScale);
+
+       const yScaleHumidity = createHumidityYScale({ height, margin })
+       const yAxisHumidity = createHumidityYAxis(yScaleHumidity);
+       const yScaleTemperature = createTemperatureYScale({ height, margin })
+       const yAxisTemperature = createTemperatureYAxis(yScaleTemperature);
+
+       const svgNodeHumidity = d3
+         .select('body')
+         .append('svg')
+         .attr('height', height)
+         .attr('width', width)
+         .style('padding', '20px');
+
+       const svgNodeTemperature = d3
+         .select('body')
+         .append('svg')
+         .attr('height', height)
+         .attr('width', width)
+         .style('padding', '20px');
+
+       svgNodeHumidity
+         .append('g')
+         .attr(
+           'transform',
+           `translate(0, ${height - margin.bottom})`)
+         .call(xAxis);
+
+       svgNodeTemperature
+         .append('g')
+         .attr(
+           'transform',
+           `translate(0, ${height - margin.bottom})`)
+         .call(xAxis);
+
+       svgNodeHumidity
+         .append('g')
+         .attr('transform', `translate(${margin.left}, 0)`)
+         .call(yAxisHumidity);
+
+       svgNodeTemperature
+         .append('g')
+         .attr('transform', `translate(${margin.left}, 0)`)
+         .call(yAxisTemperature);
+
+       const lineHumidity = d3
+         .line()
+         .x(function(d) { return xScale(new Date(d.date)); })
+         .y(function(d) { return yScaleHumidity(d.value); });
+
+       const lineTemperature = d3
+         .line()
+         .x(function(d) { return xScale(new Date(d.date)); })
+         .y(function(d) { return yScaleTemperature(d.value); });
+
+       svgNodeHumidity
+         .append("path")
+         .datum(Object.values(data.sensor1))
+         .attr("fill", "none")
+         .attr("stroke", "steelblue")
+         .attr("stroke-width", 1.5)
+         .attr("d", lineHumidity);
+
+       svgNodeHumidity
+         .append("path")
+         .datum(Object.values(data.sensor2))
+         .attr("fill", "none")
+         .attr("stroke", "crimson")
+         .attr("stroke-width", 1.5)
+         .attr("d", lineHumidity);
+
+       svgNodeTemperature
+         .append("path")
+         .datum(Object.values(data.temperature))
+         .attr("fill", "none")
+         .attr("stroke", "crimson")
+         .attr("stroke-width", 1.5)
+         .attr("d", lineTemperature);
+     });
+  </script>
 </html>
