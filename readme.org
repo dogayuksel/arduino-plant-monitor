@@ -1,5 +1,6 @@
 * Introduction
   An arduino based soil moisture tracker.
+  
 * Components 
   - Two humidity sensors
   - Arduino UNO
@@ -7,5 +8,24 @@
   - Nodejs server
   - Firebase Database
   - Simple Dashboard based on d3.js
+
 * Demo
   [[https://plant-monitor-144f5.herokuapp.com/][dashboard on heroku/firebase]]
+
+* Configuration
+- Get the `serviceAccountKey.json` from Firebase console and place on project root.
+- Copy `.env` to `.env.dev` (`.env.prod` etc.) and fill in values.
+- Run the following commands:
+#+BEGIN_SRC sh
+source .env.dev
+make
+#+END_SRC
+
+* Running
+- Run Arduino IDE and upload generated sketch to the board.
+- Run the following command:
+#+BEGIN_SRC sh
+make serve
+#+END_SRC
+
+At this point, arduino board should connect to your wifi and start sending measurements to the node server. Similarly the node server should be serving the dashboard when you visits its url on a browser. Dashboard requests data from the server which in return is queries against the firebase realtime database.

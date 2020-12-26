@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "cd dist && node index.js"
   },
   "dependencies": {
-    "express": "^4.16.4",
-    "firebase-admin": "^7.3.0"
+    "express": "^4.17.1",
+    "firebase-admin": "^9.4.2"
   }
 }

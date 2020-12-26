@@ -53,13 +53,10 @@
    };
    const createTemperatureYAxis = (yScale) => d3.axisLeft(yScale);
 
-   const data = fetch('http://localhost:3000/data')
+   const data = fetch('{{SERVER_URL}}')
      .then(v => v.json())
      .then(data => {
-       const xScale = createXScale(
-         Object.values(data.sensor1),
-         { margin, width },
-       );
+       const xScale = createXScale(data.moisture1, { margin, width });
        const xAxis = createXAxis(xScale);
 
        const yScaleHumidity = createHumidityYScale({ height, margin })
@@ -117,7 +114,7 @@
 
        svgNodeHumidity
          .append("path")
-         .datum(Object.values(data.sensor1))
+         .datum(Object.values(data.moisture1))
          .attr("fill", "none")
          .attr("stroke", "steelblue")
          .attr("stroke-width", 1.5)
@@ -125,17 +122,41 @@
 
        svgNodeHumidity
          .append("path")
-         .datum(Object.values(data.sensor2))
+         .datum(Object.values(data.moisture2))
          .attr("fill", "none")
          .attr("stroke", "crimson")
          .attr("stroke-width", 1.5)
          .attr("d", lineHumidity);
 
-       svgNodeTemperature
+       svgNodeHumidity
          .append("path")
-         .datum(Object.values(data.temperature))
+         .datum(Object.values(data.moisture3))
          .attr("fill", "none")
          .attr("stroke", "crimson")
+         .attr("stroke-width", 2.5)
+         .attr("d", lineHumidity);
+
+       svgNodeHumidity
+         .append("path")
+         .datum(Object.values(data.moisture4))
+         .attr("fill", "none")
+         .attr("stroke", "crimson")
+         .attr("stroke-width", 2.5)
+         .attr("d", lineHumidity);
+
+       svgNodeTemperature
+         .append("path")
+         .datum(Object.values(data.temperature1))
+         .attr("fill", "none")
+         .attr("stroke", "crimson")
+         .attr("stroke-width", 1.5)
+         .attr("d", lineTemperature);
+
+       svgNodeTemperature
+         .append("path")
+         .datum(Object.values(data.temperature2))
+         .attr("fill", "none")
+         .attr("stroke", "steelblue")
          .attr("stroke-width", 1.5)
          .attr("d", lineTemperature);
      });

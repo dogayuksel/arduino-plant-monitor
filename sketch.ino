@@ -6,6 +6,44 @@
 #include <DallasTemperature.h>
 #include <OneWire.h>
 
+#include <BH1750.h>   
+#include <Wire.h>
+
+
+// Initialize the Wifi client library
+WiFiClient client;
+
+GCM<AES128> gcm;
+
+char ssid[] = "{{NETWORK_NAME}}"; // your network SSID (name)
+char pass[] = "{{NETWORK_PASS}}"; // your network password
+
+char server[] = "{{SERVER}}"; // your server address
+int port = {{PORT}}; // exposed port on your server 
+
+byte key[32] = {
+  {{ARDUINO_PASS}}
+};
+byte iv[12] = {
+  {{ARDUINO_IV}}
+};
+
+int temperCount = 0;
+int status = WL_IDLE_STATUS;
+
+// last time you connected to the server, in milliseconds
+unsigned long lastConnectionTime = 0; 
+// delay between updates, in milliseconds
+const unsigned long postingInterval = 30L * 60L * 1000L; 
+const unsigned long twentyDayMillis = 20L * 24L * 60L * 60L * 1000L;
+
+int moistureSensorControlPin = 3;
+
+int moisturePin1 = A0;
+int moisturePin2 = A1;
+int moisturePin3 = A2;
+int moisturePin4 = A3;
+
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 2
 
@@ -13,56 +51,18 @@
 OneWire oneWire(ONE_WIRE_BUS);
 
 // Pass our oneWire reference to Dallas Temperature. 
-DallasTemperature sensors(&oneWire);
+DallasTemperature temperatureSensors(&oneWire);
 
-char ssid[] = "Network_SSID";      //  your network SSID (name)
-char pass[] = "Network_Password";   // your network password
+BH1750 lightMeter1(0x23);
+BH1750 lightMeter2(0x5C);
 
-GCM<AES128> gcm;
-
-byte key[32] = {
-  0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-  0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
-};
-
-int sensorPin1 = A0;
-int sensorValue1 = 0;
-int sensorPin2 = A1;
-int sensorValue2 = 0;
-
-float temperature = 0.0;
-int temperatureValue = 0;
-
-int lightPin = A2;
-int lightValue = 0;
-
-int status = WL_IDLE_STATUS;
-
-// Initialize the Wifi client library
-WiFiClient client;
-
-int port = 3000; // exposed port on your server 
-char server[] = "192.168.2.115"; // your server address
-
-unsigned long lastConnectionTime = 0; // last time you connected to the server, in milliseconds
-const unsigned long postingInterval = 30L * 60L * 1000L; // delay between updates, in milliseconds
-
-int parseIndex = 0;
-byte serverRandoms[12];
-byte serverSignature[16];
-byte serverIV[12];
-byte iv[12] = {
-  0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
-  0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB
-};
-
-int temperCount = 0;
 
 void setup() {
   //Initialize serial and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
+    // wait for serial port to connect. needed for native USB port only
+    continue; 
   }
 
   // check for the presence of the shield:
@@ -92,122 +92,108 @@ void setup() {
   
   gcm.setKey(key, 16);
 
-  sensors.begin();
+  pinMode(moistureSensorControlPin, OUTPUT);
+
+  Serial.println(F("Setup bemperature"));
+  temperatureSensors.begin();
+
+  Serial.println(F("Wire begin"));
+  Wire.begin(); 
+
+  Serial.println(F("Setup light"));
+  lightMeter1.begin(BH1750::ONE_TIME_HIGH_RES_MODE, 0x23);
+  lightMeter2.begin(BH1750::ONE_TIME_HIGH_RES_MODE, 0x5C);
+
+  Serial.println(F("Setup finished"));
 }
 
 void loop() {
-  while (client.available()) {
-    byte c = client.read();
-    Serial.write(c);
-    if (parseIndex == 0) {
-      if (c == 0x0D) { parseIndex = 1; }
-    } else if (parseIndex == 1) {
-      if (c == 0x0A) { parseIndex = 2; }
-      else { parseIndex = 0; } 
-    } else if (parseIndex == 2) {
-      if (c == 0x0D) { parseIndex = 3; }
-      else { parseIndex = 0; } 
-    } else if (parseIndex == 3) {
-      if (c == 0x0A) { parseIndex = 4; }
-      else { parseIndex = 0; } 
-    } else if (parseIndex >= 4) {
-      // Store byte
-      if (parseIndex < (4 + 12)) {
-        serverRandoms[parseIndex - 4] = c;
-        parseIndex += 1;
-      } else if (parseIndex < (4 + 12 + 16)) {
-        serverSignature[parseIndex - 4 - 12] = c;
-        parseIndex += 1;
-      } else if (parseIndex < (4 + 12 + 16 + 12 - 1 )) {
-        serverIV[parseIndex - 4 - 12 - 16] = c;
-        parseIndex += 1;
-      } else {
-        // Last byte
-        serverIV[parseIndex - 4 - 12 - 16] = c;
-        parseIndex = 0;
-        gcm.setIV(serverIV, 12);
-        gcm.addAuthData(serverRandoms, 12);
-        if (gcm.checkTag(serverSignature, 16)) {
-          Serial.println(F("\nValid signature!!!"));
-          temperCount = 0;
-          for (int i = 0; i < 12; i++) {
-            iv[i] = serverRandoms[i];
-          }
-        } else {
-          Serial.println(F("\nRandoms have been tempered!"));
-          // Postpone next connection
-          temperCount += 1;
-          lastConnectionTime += temperCount * postingInterval;
-        }
-      }
-    }
+  if (client.available()) {
+    parseResponse();
   }
 
-  if (lastConnectionTime > (20L * 24L * 60L * 60L * 1000L) && 
-      millis() < (lastConnectionTime - (20L * 24L * 60L * 60L * 1000L))) {
-    // reset on overflow (20 days of difference)
+  unsigned long timeNow = millis();
+
+  // millis overflows after 50 days
+  // we start checking after 20 days
+  if (lastConnectionTime > twentyDayMillis && 
+      timeNow < lastConnectionTime) {
+    // reset on overflow
     lastConnectionTime = 0;
+    return;
   }
 
-  if (millis() > lastConnectionTime && millis() - lastConnectionTime > postingInterval) {
-    httpRequest();
+  if (timeNow > lastConnectionTime &&
+      timeNow - lastConnectionTime > postingInterval) {
+    sendRequest(timeNow);
   }
+
+  delay(1000);
 }
 
 // this method makes a HTTP connection to the server:
-void httpRequest() {
+void sendRequest(unsigned long timeNow) {
   // close any connection before send a new request.
   // This will free the socket on the WiFi shield
   client.stop();
 
   // if there's a successful connection:
   if (client.connect(server, port)) {
-
     byte plaintext[16] = {
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     };
-    sensorValue1 = analogRead(sensorPin1);
-    sensorValue2 = analogRead(sensorPin2);
 
-    sensors.requestTemperatures(); // Send the command to get temperatures
-    temperature = sensors.getTempCByIndex(0);
+    Serial.println(F("Enable moisture sensors"));
+    digitalWrite(moistureSensorControlPin, HIGH); 
+    delay(5000);
+
+    int moistureValue1 = analogRead(moisturePin1);
+    int moistureValue2 = analogRead(moisturePin2);
+    int moistureValue3 = analogRead(moisturePin3);
+    int moistureValue4 = analogRead(moisturePin4);
+
+    Serial.println(F("Disable moisture sensors"));
+    digitalWrite(moistureSensorControlPin, LOW); 
+
+    temperatureSensors.requestTemperatures(); // Send the command to get temperatures
+    float temperature1 = temperatureSensors.getTempCByIndex(0);
+    float temperature2 = temperatureSensors.getTempCByIndex(1);
 
     // Check if reading was successful
-    if(temperature != DEVICE_DISCONNECTED_C) {
-      temperatureValue = round(temperature * 10);
+    int temperatureValue1;
+    if(temperature1 != DEVICE_DISCONNECTED_C) {
+      temperatureValue1 = round(temperature1 * 10.0);
     } 
-    else {
-      temperatureValue = 0;
-    }
+    else { temperatureValue1 = 0; }
 
-    // max voltage 0.55V
-    lightValue = map(analogRead(lightPin), 0, 113, 0, 1024);
-    
-    byte low1 = sensorValue1;
-    byte high1 = sensorValue1 >> 8;
-    plaintext[0] = high1;
-    plaintext[1] = low1;
+    // Check if reading was successful
+    int temperatureValue2;
+    if(temperature2 != DEVICE_DISCONNECTED_C) {
+      temperatureValue2 = round(temperature2 * 10.0);
+    } 
+    else { temperatureValue2 = 0; }
 
-    byte low2 = sensorValue2;
-    byte high2 = sensorValue2 >> 8;
-    plaintext[2] = high2;
-    plaintext[3] = low2;
+    float light1 = lightMeter1.readLightLevel();
+    float light2 = lightMeter2.readLightLevel();
 
-    byte low3 = temperatureValue;
-    byte high3 = temperatureValue >> 8;
-    plaintext[4] = high3;
-    plaintext[5] = low3;
+    int lightValue1 = round(map(light1, 0, 55000, 0, 1024));
+    int lightValue2 = round(map(light2, 0, 55000, 0, 1024));
 
-    byte low4 = lightValue;
-    byte high4 = lightValue >> 8;
-    plaintext[6] = high4;
-    plaintext[7] = low4;
-
+    writeValueToBufferAtOffset(moistureValue1, plaintext, 0);
+    writeValueToBufferAtOffset(moistureValue2, plaintext, 2);
+    writeValueToBufferAtOffset(moistureValue3, plaintext, 4);
+    writeValueToBufferAtOffset(moistureValue4, plaintext, 6);
+    writeValueToBufferAtOffset(temperatureValue1, plaintext, 8);
+    writeValueToBufferAtOffset(temperatureValue2, plaintext, 10);
+    writeValueToBufferAtOffset(lightValue1, plaintext, 12);
+    writeValueToBufferAtOffset(lightValue2, plaintext, 14);
+ 
     byte ciphertext[16];
 
     gcm.setIV(iv, 12);
     gcm.encrypt(ciphertext, plaintext, 16);
+
     byte tag[16];
     gcm.computeTag(tag, 16);
 
@@ -235,10 +221,73 @@ void httpRequest() {
     client.println();
 
     // note the time that the connection was made:
-    lastConnectionTime = millis();
+    lastConnectionTime = timeNow;
   } else {
     // if you couldn't make a connection:
     Serial.println(F("connection failed"));
+    delay(1000);
+  }
+}
+
+void writeValueToBufferAtOffset(int value, byte buffer[], int offset) {
+  byte low4 = value;
+  byte high4 = value >> 8;
+  buffer[offset] = high4;
+  buffer[offset + 1] = low4;
+}
+
+void parseResponse() {
+  int parseIndex = 0;
+  byte serverRandoms[12];
+  byte serverSignature[16];
+  byte serverIV[12];
+
+  while (client.available()) {
+    byte c = client.read();
+    Serial.write(c);
+    // payload starts after \n \r \n \r
+    if (parseIndex == 0) {
+      if (c == 0x0D) { parseIndex = 1; }
+    } else if (parseIndex == 1) {
+      if (c == 0x0A) { parseIndex = 2; }
+      else { parseIndex = 0; } 
+    } else if (parseIndex == 2) {
+      if (c == 0x0D) { parseIndex = 3; }
+      else { parseIndex = 0; } 
+    } else if (parseIndex == 3) {
+      if (c == 0x0A) { parseIndex = 4; }
+      else { parseIndex = 0; } 
+    } else if (parseIndex >= 4) {
+      // Store payload
+      if (parseIndex < (4 + 12)) {
+        serverRandoms[parseIndex - 4] = c;
+        parseIndex += 1;
+      } else if (parseIndex < (4 + 12 + 16)) {
+        serverSignature[parseIndex - 4 - 12] = c;
+        parseIndex += 1;
+      } else if (parseIndex < (4 + 12 + 16 + 12 - 1 )) {
+        serverIV[parseIndex - 4 - 12 - 16] = c;
+        parseIndex += 1;
+      } else {
+        // Last byte
+        serverIV[parseIndex - 4 - 12 - 16] = c;
+        parseIndex = 0;
+        gcm.setIV(serverIV, 12);
+        gcm.addAuthData(serverRandoms, 12);
+        if (gcm.checkTag(serverSignature, 16)) {
+          Serial.println(F("\nValid signature!"));
+          temperCount = 0;
+          for (int i = 0; i < 12; i++) {
+            iv[i] = serverRandoms[i];
+          }
+        } else {
+          Serial.println(F("\nRandoms have been tempered!"));
+          // Postpone next connection
+          temperCount += 1;
+          lastConnectionTime += temperCount * postingInterval;
+        }
+      }
+    }
   }
 }
 

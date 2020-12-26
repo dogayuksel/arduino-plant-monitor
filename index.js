@@ -7,10 +7,10 @@ const serviceAccount = require("./serviceAccountKey.json");
 
 const firebaseApp = admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "firebase-database-url",
+  databaseURL: "{{DATABASE_URL}}",
 });
 
-const key = Buffer.from('00112233445566778899AABBCCDDEEFF', 'hex');
+const key = Buffer.from('{{JS_PASS}}', 'hex');
 
 const app = express();
 app.use(bodyParser.raw());
@@ -29,25 +29,16 @@ app.post('/push', (req, res) => {
   let plaintext = Buffer.concat([partialPlaintext, decipher.final()]);
   const db = admin.database();
   const timestamp = new Date().toJSON();
-  const refSensor1 = db.ref("sensor1");
-  refSensor1.push().set({
+  db.ref().push().set({
     date: timestamp,
-    value: plaintext.readUInt16BE(0),
-  });
-  const refSensor2 = db.ref("sensor2");
-  refSensor2.push().set({
-    date: timestamp,
-    value: plaintext.readUInt16BE(2),
-  });
-  const refTemp = db.ref("temperature");
-  refTemp.push().set({
-    date: timestamp,
-    value: plaintext.readUInt16BE(4),
-  });
-  const refLight = db.ref("light");
-  refLight.push().set({
-    date: timestamp,
-    value: plaintext.readUInt16BE(6),
+    moisture1: plaintext.readUInt16BE(0),
+    moisture2: plaintext.readUInt16BE(2),
+    moisture3: plaintext.readUInt16BE(4),
+    moisture4: plaintext.readUInt16BE(6),
+    temperature1: plaintext.readUInt16BE(8),
+    temperature2: plaintext.readUInt16BE(10),
+    light1: plaintext.readUInt16BE(12),
+    light2: plaintext.readUInt16BE(14),
   });
   const randomsForArduino = Buffer.alloc(12);
   crypto.randomFillSync(randomsForArduino);
@@ -65,41 +56,42 @@ app.post('/push', (req, res) => {
 });
 
 app.get('/data', (req, res) => {
-  const data = {};
-  const db = admin.database();
-  const refSensor1 = db.ref('sensor1');
   const currentTimestamp = Date.now();
   const startTimestamp = currentTimestamp - 14 * 24 * 60 * 60 * 1000;
   const startDate = new Date(startTimestamp).toJSON();
-  refSensor1
+  admin
+    .database()
+    .ref()
     .orderByChild('date')
     .startAt(startDate)
     .once('value')
     .then((snapshot) => {
-      data['sensor1'] = snapshot.val();
-      refSensor2 = db.ref('sensor2');
-      return refSensor2
-        .orderByChild('date')
-        .startAt(startDate)
-        .once('value'); 
-    }).then((snapshot) => {
-      data['sensor2'] = snapshot.val();
-      return db.ref('temperature')
-        .orderByChild('date')
-        .startAt(startDate)
-        .once('value');
-    }).then((snapshot) => {
-      data['temperature'] = snapshot.val();
-      return db.ref('light')
-        .orderByChild('date')
-        .startAt(startDate)
-        .once('value');
-    }).then((snapshot) => {
-      data['light'] = snapshot.val();
-      return res.json(data);
+      data = snapshot.val();
+      const moisture1 = [];
+      const moisture2 = [];
+      const moisture3 = [];
+      const moisture4 = [];
+      const temperature1 = [];
+      const temperature2 = [];
+      const light1 = [];
+      const light2 = [];
+        Object.values(data).forEach(data => {
+          moisture1.push({ value: data.moisture1, date: data.date });
+          moisture2.push({ value: data.moisture2, date: data.date });
+          moisture3.push({ value: data.moisture3, date: data.date });
+          moisture4.push({ value: data.moisture4, date: data.date });
+          temperature1.push({ value: data.temperature1, date: data.date });
+          temperature2.push({ value: data.temperature2, date: data.date });
+          light1.push({ value: data.light1, date: data.date });
+          light2.push({ value: data.light2, date: data.date });
+        })
+      return res.json({
+        moisture1, moisture2, moisture3, moisture4,
+        temperature1, temperature2, light1, light2
+      });
     }).catch((error) => {
-      console.log('The read failed: ' + error.code);
+      console.error(error);
     });
 });
 
-app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+app.listen(port, () => console.log(`Plant-monitor listening on port ${port}!`));
