@@ -16,7 +16,7 @@
   </head>
   <body>
     <h2>Last 2 Weeks</h2>
-    <h1>Soil Moisture / Temperature</h1>
+    <h1>Soil Moisture 1 and 2 / Temperature / Light</h1>
   </body>
   <script>
    const margin = { top: 20, bottom: 20, left: 40, right: 40 };
@@ -40,7 +40,7 @@
    const createHumidityYScale = ({ height, margin }) => {
      return d3
        .scaleLinear()
-       .domain([1024, 0])
+       .domain([700, 300])
        .range([height - margin.bottom, margin.top]);
    };
    const createHumidityYAxis = (yScale) => d3.axisLeft(yScale);
@@ -53,6 +53,14 @@
    };
    const createTemperatureYAxis = (yScale) => d3.axisLeft(yScale);
 
+   const createLightYScale = ({ height, margin }) => {
+     return d3
+       .scaleLinear()
+       .domain([0, 1024])
+       .range([height - margin.bottom, margin.top]);
+   };
+   const createLightYAxis = (yScale) => d3.axisLeft(yScale);
+
    const data = fetch('{{SERVER_URL}}')
      .then(v => v.json())
      .then(data => {
@@ -63,8 +71,17 @@
        const yAxisHumidity = createHumidityYAxis(yScaleHumidity);
        const yScaleTemperature = createTemperatureYScale({ height, margin })
        const yAxisTemperature = createTemperatureYAxis(yScaleTemperature);
+       const yScaleLight = createLightYScale({ height, margin })
+       const yAxisLight = createLightYAxis(yScaleLight);
 
-       const svgNodeHumidity = d3
+       const svgNodeHumidity1 = d3
+         .select('body')
+         .append('svg')
+         .attr('height', height)
+         .attr('width', width)
+         .style('padding', '20px');
+
+       const svgNodeHumidity2 = d3
          .select('body')
          .append('svg')
          .attr('height', height)
@@ -78,7 +95,21 @@
          .attr('width', width)
          .style('padding', '20px');
 
-       svgNodeHumidity
+       const svgNodeLight = d3
+         .select('body')
+         .append('svg')
+         .attr('height', height)
+         .attr('width', width)
+         .style('padding', '20px');
+
+       svgNodeHumidity1
+         .append('g')
+         .attr(
+           'transform',
+           `translate(0, ${height - margin.bottom})`)
+         .call(xAxis);
+
+       svgNodeHumidity2
          .append('g')
          .attr(
            'transform',
@@ -92,7 +123,19 @@
            `translate(0, ${height - margin.bottom})`)
          .call(xAxis);
 
-       svgNodeHumidity
+       svgNodeLight
+         .append('g')
+         .attr(
+           'transform',
+           `translate(0, ${height - margin.bottom})`)
+         .call(xAxis);
+
+       svgNodeHumidity1
+         .append('g')
+         .attr('transform', `translate(${margin.left}, 0)`)
+         .call(yAxisHumidity);
+
+       svgNodeHumidity2
          .append('g')
          .attr('transform', `translate(${margin.left}, 0)`)
          .call(yAxisHumidity);
@@ -101,6 +144,11 @@
          .append('g')
          .attr('transform', `translate(${margin.left}, 0)`)
          .call(yAxisTemperature);
+
+       svgNodeLight
+         .append('g')
+         .attr('transform', `translate(${margin.left}, 0)`)
+         .call(yAxisLight);
 
        const lineHumidity = d3
          .line()
@@ -112,7 +160,12 @@
          .x(function(d) { return xScale(new Date(d.date)); })
          .y(function(d) { return yScaleTemperature(d.value); });
 
-       svgNodeHumidity
+       const lineLight = d3
+         .line()
+         .x(function(d) { return xScale(new Date(d.date)); })
+         .y(function(d) { return yScaleLight(d.value); });
+
+       svgNodeHumidity1
          .append("path")
          .datum(Object.values(data.moisture1))
          .attr("fill", "none")
@@ -120,7 +173,7 @@
          .attr("stroke-width", 1.5)
          .attr("d", lineHumidity);
 
-       svgNodeHumidity
+       svgNodeHumidity1
          .append("path")
          .datum(Object.values(data.moisture2))
          .attr("fill", "none")
@@ -128,20 +181,20 @@
          .attr("stroke-width", 1.5)
          .attr("d", lineHumidity);
 
-       svgNodeHumidity
+       svgNodeHumidity2
          .append("path")
          .datum(Object.values(data.moisture3))
          .attr("fill", "none")
-         .attr("stroke", "crimson")
-         .attr("stroke-width", 2.5)
+         .attr("stroke", "steelblue")
+         .attr("stroke-width", 1.5)
          .attr("d", lineHumidity);
 
-       svgNodeHumidity
+       svgNodeHumidity2
          .append("path")
          .datum(Object.values(data.moisture4))
          .attr("fill", "none")
          .attr("stroke", "crimson")
-         .attr("stroke-width", 2.5)
+         .attr("stroke-width", 1.5)
          .attr("d", lineHumidity);
 
        svgNodeTemperature
@@ -159,6 +212,22 @@
          .attr("stroke", "steelblue")
          .attr("stroke-width", 1.5)
          .attr("d", lineTemperature);
+
+       svgNodeLight
+         .append("path")
+         .datum(Object.values(data.light1))
+         .attr("fill", "none")
+         .attr("stroke", "crimson")
+         .attr("stroke-width", 1.5)
+         .attr("d", lineLight);
+
+       svgNodeLight
+         .append("path")
+         .datum(Object.values(data.light1))
+         .attr("fill", "none")
+         .attr("stroke", "steelblue")
+         .attr("stroke-width", 1.5)
+         .attr("d", lineLight);
      });
   </script>
 </html>
