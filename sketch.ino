@@ -34,7 +34,7 @@ int status = WL_IDLE_STATUS;
 // last time you connected to the server, in milliseconds
 unsigned long lastConnectionTime = 0; 
 // delay between updates, in milliseconds
-const unsigned long postingInterval = 30L * 60L * 1000L; 
+const unsigned long postingInterval = 15L * 60L * 1000L; 
 const unsigned long twentyDayMillis = 20L * 24L * 60L * 60L * 1000L;
 
 int moistureSensorControlPin = 3;
